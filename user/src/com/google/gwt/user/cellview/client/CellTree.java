@@ -16,7 +16,6 @@
 package com.google.gwt.user.cellview.client;
 
 import com.google.gwt.animation.client.Animation;
-import com.google.gwt.aria.client.Roles;
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.core.client.Scheduler;
 import com.google.gwt.dom.client.BrowserEvents;
@@ -46,6 +45,7 @@ import com.google.gwt.user.client.ui.Focusable;
 import com.google.gwt.user.client.ui.HasAnimation;
 import com.google.gwt.user.client.ui.SimplePanel;
 import com.google.gwt.view.client.TreeViewModel;
+import com.google.gwt.aria.client.Roles;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -68,6 +68,8 @@ import java.util.Set;
  * <dt>Complex example</dt>
  * <dd>{@example com.google.gwt.examples.cellview.CellTreeExample2}</dd>
  * </dl>
+ *
+ * last revision : r9997
  */
 public class CellTree extends AbstractCellTree implements HasAnimation,
     Focusable {
@@ -650,8 +652,7 @@ public class CellTree extends AbstractCellTree implements HasAnimation,
     CellBasedWidgetImpl.get().sinkEvents(this, eventTypes);
 
     // Associate a view with the item.
-    CellTreeNodeView<T> root = new CellTreeNodeView<T>(this, null, null,
-        getElement(), rootValue, messages);
+    CellTreeNodeView<T> root = createTreeNodeView(rootValue, messages);
     keyboardSelectedNode = rootNode = root;
     root.setOpen(true, false);
 
@@ -820,25 +821,18 @@ public class CellTree extends AbstractCellTree implements HasAnimation,
     keyboardSelectedNode.setKeyboardSelected(true, true);
   }
 
-  /**
-   * Sets the node that will be selected when the CellTree gains keyboard focus.
-   *
-   * @param parentNode a node in the tree that is currently open
-   * @param childIndex the index of the child to select
-   * @param stealFocus if true, also change keyboard focus to this CellTree.
-   */
-  public void setKeyboardSelectedTreeNode(TreeNode parentNode, int childIndex, boolean stealFocus) {
-    CellTreeNodeView nodeView = getCellTreeNodeView(parentNode);
-    // Just to ensure necessary checks are done, e.g.
-    //   assertNotDestroyed();checkChildBounds(childIndex);flush();
-    nodeView.getTreeNode().getChildValue(childIndex);
-
-    keyboardSelect(nodeView.getChildNode(childIndex), stealFocus);
-  }
-
   public void setTabIndex(int index) {
     this.tabIndex = index;
     keyboardSelectedNode.setKeyboardSelected(true, false);
+  }
+
+  /**
+   * Method added in order to override it in sub class and use our own implementation of {@link CellTreeNodeView}
+   * @return
+   */
+  protected <T> CellTreeNodeView<T> createTreeNodeView(T rootValue, CellTreeMessages messages){
+    return new CellTreeNodeView<T>(this, null, null,
+            getElement(), rootValue, messages);
   }
 
   /**
@@ -896,13 +890,6 @@ public class CellTree extends AbstractCellTree implements HasAnimation,
    */
   CellTreeNodeView<?> getKeyboardSelectedNode() {
     return keyboardSelectedNode;
-  }
-
-  /**
-   * Returns the TreeNode that is selected when the CellTree has keyboard focus.
-   */
-  public TreeNode getKeyboardSelectedTreeNode() {
-    return keyboardSelectedNode == null ? null : keyboardSelectedNode.getTreeNode();
   }
 
   /**
@@ -987,19 +974,6 @@ public class CellTree extends AbstractCellTree implements HasAnimation,
     chain.add(hElem);
   }
 
-  private CellTreeNodeView getCellTreeNodeView(TreeNode treeNode) {
-    if (!(treeNode instanceof CellTreeNodeView.TreeNodeImpl)) {
-      throw new UnsupportedOperationException("Operation not supported for " + treeNode.getClass());
-    }
-
-    CellTreeNodeView nodeView = ((CellTreeNodeView.TreeNodeImpl) treeNode).getNodeView();
-    if (!nodeView.belongsToTree(this)) {
-      throw new IllegalArgumentException("The tree node does not belong to the tree.");
-    }
-
-    return nodeView;
-  }
-
   private CellTreeNodeView<?> findItemByChain(ArrayList<Element> chain,
       int idx, CellTreeNodeView<?> parent) {
     if (idx == chain.size()) {
@@ -1056,14 +1030,11 @@ public class CellTree extends AbstractCellTree implements HasAnimation,
    *
    * @param keyCode the key code that was pressed
    */
-  //@VisibleForTesting
-  void handleKeyNavigation(int keyCode) {
+  private void handleKeyNavigation(int keyCode) {
     CellTreeNodeView<?> parent = keyboardSelectedNode.getParentNode();
     int parentChildCount = (parent == null) ? 0 : parent.getChildCount();
     int index = keyboardSelectedNode.getIndex();
     int childCount = keyboardSelectedNode.getChildCount();
-    boolean isRtl = LocaleInfo.getCurrentLocale().isRTL();
-    keyCode = KeyCodes.maybeSwapArrowKeysForRtl(keyCode, isRtl);
 
     switch (keyCode) {
       case KeyCodes.KEY_DOWN:
@@ -1098,7 +1069,7 @@ public class CellTree extends AbstractCellTree implements HasAnimation,
         if (index > 0) {
           // Deepest node of previous sibling hierarchy.
           CellTreeNodeView<?> prevSibling = parent.getChildNode(index - 1);
-          while (prevSibling.isOpen() && prevSibling.getChildCount() > 0) {
+          if (prevSibling.isOpen() && prevSibling.getChildCount() > 0) {
             prevSibling = prevSibling.getChildNode(prevSibling.getChildCount() - 1);
           }
           keyboardSelect(prevSibling, true);
@@ -1108,10 +1079,18 @@ public class CellTree extends AbstractCellTree implements HasAnimation,
         }
         break;
       case KeyCodes.KEY_RIGHT:
-        keyboardNavigateDeep();
+        if (LocaleInfo.getCurrentLocale().isRTL()) {
+          keyboardNavigateShallow();
+        } else {
+          keyboardNavigateDeep();
+        }
         break;
       case KeyCodes.KEY_LEFT:
-        keyboardNavigateShallow();
+        if (LocaleInfo.getCurrentLocale().isRTL()) {
+          keyboardNavigateDeep();
+        } else {
+          keyboardNavigateShallow();
+        }
         break;
     }
   }

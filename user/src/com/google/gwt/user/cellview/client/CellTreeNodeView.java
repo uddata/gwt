@@ -15,7 +15,6 @@
  */
 package com.google.gwt.user.cellview.client;
 
-import com.google.gwt.aria.client.ExpandedValue;
 import com.google.gwt.aria.client.Roles;
 import com.google.gwt.cell.client.Cell;
 import com.google.gwt.cell.client.Cell.Context;
@@ -57,6 +56,7 @@ import com.google.gwt.view.client.RowCountChangeEvent;
 import com.google.gwt.view.client.SelectionModel;
 import com.google.gwt.view.client.TreeViewModel;
 import com.google.gwt.view.client.TreeViewModel.NodeInfo;
+import com.google.gwt.aria.client.ExpandedValue;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -68,10 +68,10 @@ import java.util.Set;
 /**
  * A view of a tree node.
  *
- * @param <T> the type that this view contains
+ * last revision : r9976
  */
 // TODO(jlabanca): Convert this to be the type of the child and create lazily.
-class CellTreeNodeView<T> extends UIObject {
+public class CellTreeNodeView<T> extends UIObject {
 
   interface Template extends SafeHtmlTemplates {
     @Template("<div onclick=\"\" style=\"{0}position:relative;\""
@@ -83,6 +83,7 @@ class CellTreeNodeView<T> extends UIObject {
         + "<div style=\"{0}\" class=\"{1}\">{2}</div></div>")
     SafeHtml outerDiv(SafeStyles cssString, String classes, SafeHtml content, String ariaSelected);
   }
+
   /**
    * The {@link com.google.gwt.view.client.HasData} used to show children. This
    * class is intentionally static because we might move it to a new
@@ -91,12 +92,12 @@ class CellTreeNodeView<T> extends UIObject {
    *
    * @param <C> the child item type
    */
-  static class NodeCellList<C> implements HasData<C> {
+  protected static class NodeCellList<C> implements HasData<C> {
 
     /**
      * The view used by the NodeCellList.
      */
-    private class View implements HasDataPresenter.View<C> {
+    protected class View implements HasDataPresenter.View<C> {
 
       private final Element childContainer;
 
@@ -435,7 +436,7 @@ class CellTreeNodeView<T> extends UIObject {
 
       // Create a presenter.
       presenter =
-          new HasDataPresenter<C>(this, new View(nodeView.ensureChildContainer()), pageSize,
+          new HasDataPresenter<C>(this, createView(), pageSize,
               nodeInfo.getProvidesKey());
 
       // Disable keyboard selection because it is handled by CellTree.
@@ -553,6 +554,20 @@ class CellTreeNodeView<T> extends UIObject {
     public void setVisibleRangeAndClearData(Range range, boolean forceRangeChangeEvent) {
       presenter.setVisibleRangeAndClearData(range, forceRangeChangeEvent);
     }
+
+    /*Open API for drag and drop support
+     */
+    protected View createView(){
+      return new View(nodeView.ensureChildContainer());
+    }
+
+    protected NodeInfo<C> getNodeInfo() {
+      return nodeInfo;
+    }
+
+    protected CellTreeNodeView<?> getNodeView() {
+      return nodeView;
+    }
   }
 
   /**
@@ -561,7 +576,7 @@ class CellTreeNodeView<T> extends UIObject {
    * might move it to a new {@link CellTreeNodeView}, and we don't want
    * non-static references to the old {@link CellTreeNodeView}.
    */
-  static class TreeNodeImpl implements TreeNode {
+  private static class TreeNodeImpl implements TreeNode {
 
     private CellTreeNodeView<?> nodeView;
 
@@ -588,10 +603,6 @@ class CellTreeNodeView<T> extends UIObject {
     public int getIndex() {
       assertNotDestroyed();
       return (nodeView.parentNode == null) ? 0 : nodeView.parentNode.children.indexOf(nodeView);
-    }
-
-    final CellTreeNodeView<?> getNodeView() {
-      return nodeView;
     }
 
     @Override
@@ -673,7 +684,7 @@ class CellTreeNodeView<T> extends UIObject {
     /**
      * Flush pending changes in the view.
      */
-    void flush() {
+    private void flush() {
       if (nodeView.listView != null) {
         nodeView.listView.presenter.flush();
       }
@@ -700,7 +711,7 @@ class CellTreeNodeView<T> extends UIObject {
   /**
    * The temporary element used to render child items.
    */
-  private static Element tmpElem;
+  private static com.google.gwt.user.client.Element tmpElem;
 
   /**
    * Returns the element that parents the cell contents of the node.
@@ -728,16 +739,16 @@ class CellTreeNodeView<T> extends UIObject {
    * @param nodeElem the element that represents the node
    * @return the cell parent within the node
    */
-  static Element getSelectionElement(Element nodeElem) {
+  private static Element getSelectionElement(Element nodeElem) {
     return nodeElem.getFirstChildElement();
   }
 
   /**
    * Return the temporary element used to create elements.
    */
-  private static Element getTmpElem() {
+  private static com.google.gwt.user.client.Element getTmpElem() {
     if (tmpElem == null) {
-      tmpElem = Document.get().createDivElement();
+      tmpElem = Document.get().createDivElement().cast();
     }
     return tmpElem;
   }
@@ -864,9 +875,9 @@ class CellTreeNodeView<T> extends UIObject {
    * @param parentNodeInfo the {@link NodeInfo} of the parent
    * @param elem the outer element of this {@link CellTreeNodeView}
    * @param value the value of this node
-   * @param messages translation messages
+   * @param messages tranlation messages
    */
-  CellTreeNodeView(final CellTree tree, final CellTreeNodeView<?> parent,
+  protected CellTreeNodeView(final CellTree tree, final CellTreeNodeView<?> parent,
       NodeInfo<T> parentNodeInfo, Element elem, T value, CellTreeMessages messages) {
     this.tree = tree;
     this.parentNode = parent;
@@ -1137,14 +1148,10 @@ class CellTreeNodeView<T> extends UIObject {
    * @param <C> the child data type of the node
    */
   protected <C> void onOpen(final NodeInfo<C> nodeInfo) {
-    NodeCellList<C> view = new NodeCellList<C>(nodeInfo, this, tree.getDefaultNodeSize());
+    NodeCellList<C> view = createNodeCellList(nodeInfo);
     listView = view;
     view.setSelectionModel(nodeInfo.getSelectionModel());
     nodeInfo.setDataDisplay(view);
-  }
-
-  boolean belongsToTree(final CellTree tree) {
-    return this.tree == tree;
   }
 
   /**
@@ -1167,7 +1174,7 @@ class CellTreeNodeView<T> extends UIObject {
    *
    * @return the child container
    */
-  Element ensureChildContainer() {
+  public Element ensureChildContainer() {
     if (childContainer == null) {
       childContainer = Document.get().createDivElement();
       ensureContentContainer().insertFirst(childContainer);
@@ -1303,13 +1310,14 @@ class CellTreeNodeView<T> extends UIObject {
       cellParent.removeAttribute("accessKey");
     } else {
       FocusImpl focusImpl = FocusImpl.getFocusImplForWidget();
-      focusImpl.setTabIndex(cellParent, tree.getTabIndex());
+      com.google.gwt.user.client.Element cellElem = cellParent.cast();
+      focusImpl.setTabIndex(cellElem, tree.getTabIndex());
       char accessKey = tree.getAccessKey();
       if (accessKey != 0) {
-        focusImpl.setAccessKey(cellParent, accessKey);
+        focusImpl.setAccessKey(cellElem, accessKey);
       }
       if (stealFocus && !tree.cellIsEditing) {
-        cellParent.focus();
+        cellElem.focus();
       }
     }
 
@@ -1401,7 +1409,7 @@ class CellTreeNodeView<T> extends UIObject {
       html = LEAF_IMAGE;
     }
     Element tmp = Document.get().createDivElement();
-    tmp.setInnerSafeHtml(html);
+    tmp.setInnerHTML(html.asString());
     Element imageElem = tmp.getFirstChildElement();
 
     Element oldImg = getImageElement();
@@ -1416,4 +1424,12 @@ class CellTreeNodeView<T> extends UIObject {
           ExpandedValue.of(open));
     }
   }
+
+  /* for drag and drop support */
+  protected <C> NodeCellList<C> createNodeCellList(NodeInfo<C> nodeInfo){
+    return new NodeCellList<C>(nodeInfo, this,
+        tree.getDefaultNodeSize());
+
+  }
+
 }

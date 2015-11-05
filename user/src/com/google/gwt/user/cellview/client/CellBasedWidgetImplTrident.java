@@ -1,30 +1,18 @@
-/*
- * Copyright 2010 Google Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License"); you may not
- * use this file except in compliance with the License. You may obtain a copy of
- * the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
- * the License.
- */
 package com.google.gwt.user.cellview.client;
+
+import java.util.HashSet;
+import java.util.Set;
 
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.Scheduler;
 import com.google.gwt.core.client.Scheduler.ScheduledCommand;
-import com.google.gwt.core.shared.impl.StringCase;
 import com.google.gwt.dom.client.BrowserEvents;
 import com.google.gwt.dom.client.Document;
 import com.google.gwt.dom.client.Element;
 import com.google.gwt.dom.client.EventTarget;
 import com.google.gwt.dom.client.InputElement;
+import com.google.gwt.query.client.plugins.events.EventsListener;
 import com.google.gwt.safehtml.shared.SafeHtml;
 import com.google.gwt.safehtml.shared.SafeHtmlUtils;
 import com.google.gwt.user.client.DOM;
@@ -32,12 +20,17 @@ import com.google.gwt.user.client.Event;
 import com.google.gwt.user.client.EventListener;
 import com.google.gwt.user.client.ui.Widget;
 
-import java.util.HashSet;
-import java.util.Set;
-
 /**
+ * CellBasedWidgetImplSafari implementation based on revision r=11363 :
+ *
+ * Some adaptation was done to support GWTQuery Event listener
+ *
  * IE specified Impl used by cell based widgets.
+ *
+ * last revision : r 11363
+ *
  */
+
 class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
 
   /**
@@ -68,13 +61,17 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
   /**
    * Dispatch an event to the cell, ensuring that the widget will catch it.
    *
-   * @param widget the widget that will handle the event
-   * @param target the cell element
-   * @param eventBits the event bits to sink
-   * @param event the event to fire, or null not to fire an event
+   * @param widget
+   *          the widget that will handle the event
+   * @param target
+   *          the cell element
+   * @param eventBits
+   *          the event bits to sink
+   * @param event
+   *          the event to fire, or null not to fire an event
    */
-  private static void dispatchCellEvent(Widget widget, Element target,
-      int eventBits, Event event) {
+  private static void dispatchCellEvent(Widget widget,
+      com.google.gwt.user.client.Element target, int eventBits, Event event) {
     // Make sure that the target is still a child of the widget. We defer the
     // firing of some events, so its possible that the DOM structure has
     // changed before we fire the event.
@@ -94,9 +91,18 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
   }
 
   /**
+   * Dispatch an event through the normal GWT mechanism.
+   */
+  private static native void dispatchEvent(Event evt, Element elem,
+      EventListener listener) /*-{
+      @com.google.gwt.user.client.DOM::dispatchEvent(Lcom/google/gwt/user/client/Event;Lcom/google/gwt/dom/client/Element;Lcom/google/gwt/user/client/EventListener;)(evt, elem, listener);
+  }-*/;
+
+  /**
    * Get the value of an element that has a value or checked state.
    *
-   * @param elem the input element
+   * @param elem
+   *          the input element
    * @return the value of the input
    */
   private static Object getInputValue(Element elem) {
@@ -110,7 +116,8 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
    * Get the value of an element that has a value, such as an input element,
    * textarea, or select box.
    *
-   * @param elem the input element
+   * @param elem
+   *          the input element
    * @return the value of the input
    */
   private static native String getInputValueImpl(Element elem) /*-{
@@ -130,21 +137,37 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
     if (!Element.is(eventTarget)) {
       return;
     }
-    final Element target = eventTarget.cast();
+    final com.google.gwt.user.client.Element target = eventTarget.cast();
 
     // Get the event listener.
-    Element curElem = target;
+    com.google.gwt.user.client.Element curElem = target;
     EventListener listener = DOM.getEventListener(curElem);
     while (curElem != null && listener == null) {
-      curElem = curElem.getParentElement();
+      curElem = curElem.getParentElement().cast();
       listener = (curElem == null) ? null : DOM.getEventListener(curElem);
+      // check if it's not the GQuery event listener or if it have a original
+      // event listener
+      if (listener instanceof EventsListener
+          && ((EventsListener) listener).getOriginalEventListener() == null) {
+        // continue the lookup of GWT listener
+        listener = null;
+      }
     }
 
     // Get the Widget from the event listener.
-    if (!(listener instanceof Widget)) {
+    Widget widget = null;
+    if (listener instanceof Widget) {
+      widget = (Widget) listener;
+    } else if (listener instanceof EventsListener) {
+      EventsListener gQueryListener = (EventsListener) listener;
+      if (gQueryListener.getOriginalEventListener() instanceof Widget) {
+        widget = (Widget) gQueryListener.getOriginalEventListener();
+      }
+    }
+
+    if (widget == null) {
       return;
     }
-    Widget widget = (Widget) listener;
 
     // Do not special case events that occur on the widget itself.
     if (target == widget.getElement()) {
@@ -154,7 +177,7 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
     String type = event.getType();
     if (BrowserEvents.FOCUSIN.equals(type)) {
       // If this is an input element, remember that we focused it.
-      String tagName = StringCase.toLower(target.getTagName());
+      String tagName = target.getTagName().toLowerCase();
       if (inputTypes.contains(tagName)) {
         focusedInput = target;
         focusedInputValue = getInputValue(target);
@@ -174,21 +197,22 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
       Event blurEvent = Document.get().createFocusEvent().cast();
       dispatchCellEvent(widget, target, Event.ONBLUR, null);
     } else if (BrowserEvents.LOAD.equals(type) || BrowserEvents.ERROR.equals(type)) {
-      DOM.dispatchEvent(event, widget.getElement(), listener);
+      dispatchEvent(event, widget.getElement(), listener);
     }
   }
 
   /**
    * Check whether or not an element is a checkbox or radio button.
    *
-   * @param elem the element to check
+   * @param elem
+   *          the element to check
    * @return true if a checkbox, false if not
    */
   private static boolean isCheckbox(Element elem) {
     if (elem == null || !"input".equalsIgnoreCase(elem.getTagName())) {
       return false;
     }
-    String inputType = StringCase.toLower(InputElement.as(elem).getType());
+    String inputType = InputElement.as(elem).getType().toLowerCase();
     return "checkbox".equals(inputType) || "radio".equals(inputType);
   }
 
@@ -196,7 +220,8 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
    * Synthesize a change event on the focused input element if the value has
    * changed.
    *
-   * @param widget the {@link Widget} containing the element
+   * @param widget
+   *          the {@link Widget} containing the element
    */
   private static void maybeFireChangeEvent(Widget widget) {
     if (focusedInput == null) {
@@ -209,7 +234,7 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
       focusedInputValue = newValue;
 
       // Fire a synthetic event to the input element.
-      Element target = focusedInput;
+      com.google.gwt.user.client.Element target = focusedInput.cast();
       Event changeEvent = Document.get().createChangeEvent().cast();
       dispatchCellEvent(widget, target, Event.ONCHANGE, changeEvent);
     }
@@ -242,19 +267,20 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
 
   @Override
   public boolean isFocusable(Element elem) {
-    return focusableTypes.contains(StringCase.toLower(elem.getTagName()))
+    return focusableTypes.contains(elem.getTagName().toLowerCase())
         || getTabIndexIfSpecified(elem) >= 0;
   }
+
 
   @Override
   public void onBrowserEvent(final Widget widget, Event event) {
     // We need to remove the event listener from the cell now that the event
     // has fired.
-    String type = StringCase.toLower(event.getType());
+    String type = event.getType().toLowerCase();
     if (BrowserEvents.FOCUS.equals(type) || BrowserEvents.BLUR.equals(type) || BrowserEvents.CHANGE.equals(type)) {
       EventTarget eventTarget = event.getEventTarget();
       if (Element.is(eventTarget)) {
-        Element target = eventTarget.cast();
+        com.google.gwt.user.client.Element target = eventTarget.cast();
         if (target != widget.getElement()) {
           DOM.setEventListener(target, null);
         }
@@ -262,7 +288,7 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
     }
 
     // Update the value of the focused input box.
-    if (focusedInput != null && BrowserEvents.CHANGE.equals(type)) {
+    if (focusedInput != null && BrowserEvents.CHANGE.equals(type)){
       focusedInputValue = getInputValue(focusedInput);
     }
 
@@ -343,21 +369,22 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
 
   /**
    * Get the tab index of an element if the tab index is specified.
-   * 
+   *
    * @param elem the Element
    * @return the tab index, or -1 if not specified
    */
   private native int getTabIndexIfSpecified(Element elem) /*-{
     var attrNode = elem.getAttributeNode('tabIndex');
-    return (attrNode != null && attrNode.specified) ? elem.tabIndex : -1;
+  return (attrNode != null && attrNode.specified) ? elem.tabIndex : -1;
   }-*/;
+
 
   /**
    * Initialize the focus event listener.
    */
   private native void initFocusEventSystem() /*-{
     @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::dispatchFocusEvent = $entry(function() {
-      @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::handleNonBubblingEvent(Lcom/google/gwt/user/client/Event;)($wnd.event);
+    @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::handleNonBubblingEvent(Lcom/google/gwt/user/client/Event;)($wnd.event);
     });
   }-*/;
 
@@ -365,30 +392,32 @@ class CellBasedWidgetImplTrident extends CellBasedWidgetImpl {
    * Initialize load events. We hang a method off of $wnd so we can reference it
    * in the HTML generated for img tags.
    *
-   * @param moduleName the module name of the current module
+   * @param moduleName
+   *          the module name of the current module
    */
   private native void initLoadEvents(String moduleName) /*-{
     // Initialize an array of listeners. Each module gets its own entry in the
     // array to prevent conflicts on pages with multiple modules.
     if (!$wnd.__gwt_CellBasedWidgetImplLoadListeners) {
-      $wnd.__gwt_CellBasedWidgetImplLoadListeners = new Array();
+    $wnd.__gwt_CellBasedWidgetImplLoadListeners = new Array();
     }
 
     // Add an entry for the specified module.
     $wnd.__gwt_CellBasedWidgetImplLoadListeners[moduleName] = $entry(function() {
-      @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::handleNonBubblingEvent(Lcom/google/gwt/user/client/Event;)($wnd.event);
+    @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::handleNonBubblingEvent(Lcom/google/gwt/user/client/Event;)($wnd.event);
     });
   }-*/;
 
   /**
    * Sink focus events for the specified element.
    *
-   * @param elem the element that will receive the events
+   * @param elem
+   *          the element that will receive the events
    */
   private native void sinkFocusEvents(Element elem) /*-{
     elem.attachEvent('onfocusin',
-        @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::dispatchFocusEvent);
+    @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::dispatchFocusEvent);
     elem.attachEvent('onfocusout',
-        @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::dispatchFocusEvent);
+    @com.google.gwt.user.cellview.client.CellBasedWidgetImplTrident::dispatchFocusEvent);
   }-*/;
 }

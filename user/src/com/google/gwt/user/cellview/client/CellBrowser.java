@@ -1,12 +1,12 @@
 /*
  * Copyright 2010 Google Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
@@ -43,6 +43,7 @@ import com.google.gwt.safecss.shared.SafeStyles;
 import com.google.gwt.safecss.shared.SafeStylesBuilder;
 import com.google.gwt.safecss.shared.SafeStylesUtils;
 import com.google.gwt.safehtml.client.SafeHtmlTemplates;
+import com.google.gwt.safehtml.client.SafeHtmlTemplates.Template;
 import com.google.gwt.safehtml.shared.SafeHtml;
 import com.google.gwt.safehtml.shared.SafeHtmlBuilder;
 import com.google.gwt.safehtml.shared.SafeHtmlUtils;
@@ -69,13 +70,13 @@ import java.util.List;
 /**
  * A "browsable" view of a tree in which only a single node per level may be
  * open at one time.
- * 
+ *
  * <p>
  * This widget will <em>only</em> work in standards mode, which requires that
  * the HTML page in which it is run have an explicit &lt;!DOCTYPE&gt;
  * declaration.
  * </p>
- * 
+ *
  * <p>
  * <h3>Example</h3>
  * <dl>
@@ -84,9 +85,11 @@ import java.util.List;
  * <dt>Complex example</dt>
  * <dd>{@example com.google.gwt.examples.cellview.CellBrowserExample2}</dd>
  * </dl>
+ *
+ * last revision : r10339
  */
-public class CellBrowser extends AbstractCellTree implements ProvidesResize, RequiresResize,
-    HasAnimation {
+public class CellBrowser extends AbstractCellTree implements ProvidesResize,
+    RequiresResize, HasAnimation {
 
   /**
    * A ClientBundle that provides images for this widget.
@@ -199,10 +202,10 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * A custom version of cell list used by the browser. Visible for testing.
-   * 
+   *
    * @param <T> the data type of list items
    */
-  class BrowserCellList<T> extends CellList<T> {
+  protected class BrowserCellList<T> extends CellList<T> {
 
     /**
      * The level of this list view.
@@ -270,14 +273,20 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
       String eventType = event.getType();
       if (BrowserEvents.KEYDOWN.equals(eventType) && !isKeyboardNavigationSuppressed()) {
         int keyCode = event.getKeyCode();
-        boolean isRtl = LocaleInfo.getCurrentLocale().isRTL();
-        keyCode = KeyCodes.maybeSwapArrowKeysForRtl(keyCode, isRtl);
         switch (keyCode) {
           case KeyCodes.KEY_LEFT:
-            keyboardNavigateShallow();
+            if (LocaleInfo.getCurrentLocale().isRTL()) {
+              keyboardNavigateDeep();
+            } else {
+              keyboardNavigateShallow();
+            }
             return;
           case KeyCodes.KEY_RIGHT:
-            keyboardNavigateDeep();
+            if (LocaleInfo.getCurrentLocale().isRTL()) {
+              keyboardNavigateShallow();
+            } else {
+              keyboardNavigateDeep();
+            }
             return;
         }
       }
@@ -369,7 +378,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
       } else {
         image = closedImageHtml;
       }
-      tmpElem.setInnerSafeHtml(image);
+      tmpElem.setInnerHTML(image.asString());
       elem.replaceChild(tmpElem.getFirstChildElement(), elem.getFirstChildElement());
 
       // Update the open state.
@@ -379,7 +388,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
     /**
      * Set the selected value in this list. If there is already a selected
      * value, the old value will be deselected.
-     * 
+     *
      * @param value the selected value
      */
     protected void setSelectedValue(T value) {
@@ -405,7 +414,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
      * Check if the specified index is currently open. An index is open if it is
      * the keyboard selected index, there is an associated keyboard selected
      * value, and the value is not a leaf.
-     * 
+     *
      * @param index the index
      * @return true if open, false if not
      */
@@ -449,7 +458,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * A node in the tree.
-   * 
+   *
    * @param <C> the data type of the children of the node
    */
   class TreeNodeImpl<C> implements TreeNode {
@@ -461,7 +470,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
     /**
      * Construct a new {@link TreeNodeImpl}.
-     * 
+     *
      * @param nodeInfo the nodeInfo for the children nodes
      * @param value the value of the node
      * @param display the display associated with the node
@@ -609,7 +618,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
     /**
      * Check the child bounds.
-     * 
+     *
      * @param index the index of the child
      * @throws IndexOutOfBoundsException if the child is not in range
      */
@@ -634,7 +643,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
     /**
      * Get the index of the open item.
-     * 
+     *
      * @return the index of the open item, or -1 if not found
      */
     private int getOpenIndex() {
@@ -643,7 +652,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
     /**
      * Get the parent node without checking if this node is destroyed.
-     * 
+     *
      * @return the parent node, or null if the node has no parent
      */
     private TreeNodeImpl<?> getParentImpl() {
@@ -879,6 +888,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
       }
       return resources;
     }
+
   }
 
   private static Resources DEFAULT_RESOURCES;
@@ -891,7 +901,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   private static Template template;
 
-  private static Resources getDefaultResources() {
+  protected static Resources getDefaultResources() {
     if (DEFAULT_RESOURCES == null) {
       DEFAULT_RESOURCES = GWT.create(Resources.class);
     }
@@ -970,21 +980,20 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * Construct a new {@link CellBrowser}.
-   * 
+   *
    * @param <T> the type of data in the root node
    * @param viewModel the {@link TreeViewModel} that backs the tree
    * @param rootValue the hidden root value of the tree
    *
    * @deprecated please use {@link Builder}
    */
-  @Deprecated
   public <T> CellBrowser(TreeViewModel viewModel, T rootValue) {
     this(new Builder<T>(viewModel, rootValue));
   }
 
   /**
    * Construct a new {@link CellBrowser} with the specified {@link Resources}.
-   * 
+   *
    * @param <T> the type of data in the root node
    * @param viewModel the {@link TreeViewModel} that backs the tree
    * @param rootValue the hidden root value of the tree
@@ -992,7 +1001,6 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
    *
    * @deprecated please use {@link Builder}
    */
-  @Deprecated
   public <T> CellBrowser(TreeViewModel viewModel, T rootValue, Resources resources) {
     this(new Builder<T>(viewModel, rootValue).resources(resources));
   }
@@ -1045,7 +1053,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * Get the default width of new columns.
-   * 
+   *
    * @return the default width in pixels
    * @see #setDefaultColumnWidth(int)
    */
@@ -1055,7 +1063,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * Get the minimum width of columns.
-   * 
+   *
    * @return the minimum width in pixels
    * @see #setMinimumColumnWidth(int)
    */
@@ -1096,7 +1104,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * Set the default width of new columns.
-   * 
+   *
    * @param width the default width in pixels
    * @see #getDefaultColumnWidth()
    */
@@ -1106,7 +1114,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * Set the minimum width of columns.
-   * 
+   *
    * @param minWidth the minimum width in pixels
    * @see #getMinimumColumnWidth()
    */
@@ -1116,7 +1124,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * Create a pager to control the list view.
-   * 
+   *
    * @param <C> the item type in the list view
    * @param display the list view to add paging too
    * @return the pager
@@ -1147,7 +1155,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
   /**
    * Create a new {@link TreeNodeImpl} and append it to the end of the
    * LayoutPanel.
-   * 
+   *
    * @param <C> the data type of the children
    * @param nodeInfo the info about the node
    * @param value the value of the open node
@@ -1201,13 +1209,13 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
   /**
    * Create a {@link HasData} that will display items. The {@link HasData} must
    * extend {@link Widget}.
-   * 
+   *
    * @param <C> the item type in the list view
    * @param nodeInfo the node info with child data
    * @param level the level of the list
    * @return the {@link HasData}
    */
-  private <C> BrowserCellList<C> createDisplay(NodeInfo<C> nodeInfo, int level) {
+  protected <C> BrowserCellList<C> createDisplay(NodeInfo<C> nodeInfo, int level) {
     BrowserCellList<C> display =
         new BrowserCellList<C>(nodeInfo.getCell(), level, nodeInfo.getProvidesKey());
     if (loadingIndicator != null) {
@@ -1228,9 +1236,20 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
     return display;
   }
 
+  /*
+   * Open api for drag and drop
+   */
+  protected Widget getLoadingIndicator() {
+    return loadingIndicator;
+  }
+
+  protected Integer getPageSize() {
+    return pageSize;
+  }
+
   /**
    * Get the HTML representation of an image.
-   * 
+   *
    * @param res the {@link ImageResource} to render as HTML
    * @return the rendered HTML
    */
@@ -1252,7 +1271,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * Get the {@link SplitLayoutPanel} used to lay out the views.
-   * 
+   *
    * @return the {@link SplitLayoutPanel}
    */
   private SplitLayoutPanel getSplitLayoutPanel() {
@@ -1261,7 +1280,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
 
   /**
    * Reduce the number of {@link HasData}s down to the specified level.
-   * 
+   *
    * @param level the level to trim to
    */
   private void trimToLevel(int level) {
@@ -1288,7 +1307,7 @@ public class CellBrowser extends AbstractCellTree implements ProvidesResize, Req
    * Update the state of a child node based on the keyboard selection of the
    * specified {@link BrowserCellList}. This method will open/close child
    * {@link TreeNode}s as needed.
-   * 
+   *
    * @param cellList the CellList that changed state.
    * @param fireEvents true to fireEvents
    * @return the open {@link TreeNode}, or null if not opened

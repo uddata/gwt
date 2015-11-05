@@ -1,24 +1,26 @@
 /*
  * Copyright 2010 Google Inc.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
  * the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
  * License for the specific language governing permissions and limitations under
  * the License.
  */
+
 package com.google.gwt.user.cellview.client;
 
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.dom.client.BrowserEvents;
 import com.google.gwt.dom.client.Element;
 import com.google.gwt.dom.client.EventTarget;
+import com.google.gwt.query.client.plugins.events.EventsListener;
 import com.google.gwt.user.client.DOM;
 import com.google.gwt.user.client.Event;
 import com.google.gwt.user.client.EventListener;
@@ -28,14 +30,29 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
+ * Some adaptation was done to support GWTQuery Event listener
+
  * Standard implementation used by most cell based widgets.
+ * Use {@link com.google.gwt.user.cellview.client.CellBasedWidgetImplStandard} instead.
+ *             This class will be removed in future release.
+ *
+ * last revision : r11363
  */
+
 class CellBasedWidgetImplStandard extends CellBasedWidgetImpl {
 
   /**
    * The method used to dispatch non-bubbling events.
    */
   private static JavaScriptObject dispatchNonBubblingEvent;
+
+  /**
+   * Dispatch an event through the normal GWT mechanism.
+   */
+  private static native void dispatchEvent(
+      Event evt, Element elem, EventListener listener) /*-{
+      @com.google.gwt.user.client.DOM::dispatchEvent(Lcom/google/gwt/user/client/Event;Lcom/google/gwt/dom/client/Element;Lcom/google/gwt/user/client/EventListener;)(evt, elem, listener);
+  }-*/;
 
   /**
    * Handle an event from a cell. Used by {@link #initEventSystem()}.
@@ -48,10 +65,10 @@ class CellBasedWidgetImplStandard extends CellBasedWidgetImpl {
     if (!Element.is(eventTarget)) {
       return;
     }
-    Element target = eventTarget.cast();
+    com.google.gwt.user.client.Element target = eventTarget.cast();
 
     // Get the event listener, which is the first widget that handles the
-    // specified event type.
+  // specified event type.
     String typeName = event.getType();
     EventListener listener = DOM.getEventListener(target);
     while (target != null && listener == null) {
@@ -60,18 +77,22 @@ class CellBasedWidgetImplStandard extends CellBasedWidgetImpl {
         // The target handles the event, so this must be the event listener.
         listener = DOM.getEventListener(target);
       }
+      //check if it's not the GQuery event listener or if it have a original event listener
+      if (listener instanceof EventsListener && ((EventsListener)listener).getOriginalEventListener() == null){
+        //continue the lookup of GWT listener
+        listener = null;
+      }
     }
 
     // Fire the event.
     if (listener != null) {
-      DOM.dispatchEvent(event, target, listener);
+      dispatchEvent(event, target, listener);
     }
   }
-
   /**
    * Check if the specified element handles the a non-bubbling event.
    *
-   * @param elem     the element to check
+   * @param elem the element to check
    * @param typeName the non-bubbling event
    * @return true if the event is handled, false if not
    */
@@ -104,7 +125,7 @@ class CellBasedWidgetImplStandard extends CellBasedWidgetImpl {
       // Sink the non-bubbling event.
       Element elem = widget.getElement();
       if (!isNonBubblingEventHandled(elem, typeName)) {
-        elem.setAttribute("__gwtCellBasedWidgetImplDispatching" + typeName, "true");
+      elem.setAttribute("__gwtCellBasedWidgetImplDispatching" + typeName, "true");
         sinkEventImpl(elem, typeName);
       }
       return -1;
@@ -117,18 +138,18 @@ class CellBasedWidgetImplStandard extends CellBasedWidgetImpl {
    * Initialize the event system.
    */
   private native void initEventSystem() /*-{
-    @CellBasedWidgetImplStandard::dispatchNonBubblingEvent = $entry(function (evt) {
-      @CellBasedWidgetImplStandard::handleNonBubblingEvent(Lcom/google/gwt/user/client/Event;)(evt);
+    @com.google.gwt.user.cellview.client.CellBasedWidgetImplStandard::dispatchNonBubblingEvent = $entry(function(evt) {
+      @com.google.gwt.user.cellview.client.CellBasedWidgetImplStandard::handleNonBubblingEvent(Lcom/google/gwt/user/client/Event;)(evt);
     });
   }-*/;
 
   /**
    * Sink an event on the element.
    *
-   * @param elem     the element to sink the event on
+   * @param elem the element to sink the event on
    * @param typeName the name of the event to sink
    */
   private native void sinkEventImpl(Element elem, String typeName) /*-{
-    elem.addEventListener(typeName, @CellBasedWidgetImplStandard::dispatchNonBubblingEvent, true);
+    elem.addEventListener(typeName, @com.google.gwt.user.cellview.client.CellBasedWidgetImplStandard::dispatchNonBubblingEvent, true);
   }-*/;
 }
